@@ -4,47 +4,124 @@
 запиту, коди відповіді й формат JSON. Веб-рівень (`app/main.py`) отримує
 звідси готовий результат або зрозумілу помилку і нічого не знає про
 `requests`.
-
-Функції нижче — заготовки. Реалізуйте їх самі, ухваливши по дорозі рішення
-з розділу 4 практичної роботи:
-
-* як передати параметри запиту, не склеюючи URL вручну;
-* яке обмеження часу (timeout) поставити й що робити, коли воно спрацювало;
-* чи однаково реагувати на помилку клієнта (4xx) і сервера (5xx);
-* як повестися, коли міста не знайдено або у відповіді немає потрібних полів;
-* що саме віддавати назовні при успіху і як позначати помилку.
-
-Реальні відповіді обох сервісів збережено в папці `samples/` — подивіться їх
-перед тим, як писати розбір відповіді.
 """
+
+import requests
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 
 class WeatherError(Exception):
-    """Помилка отримання погоди, зрозуміла веб-рівню.
-
-    Заготовка. Вирішіть, чи достатньо одного типу помилки, чи їх варто
-    розрізняти — місто не знайдено, сервіс недоступний, відповідь не та,
-    якої очікували. Від цього залежить, який HTTP-статус поверне застосунок
-    і що побачить користувач.
-    """
+    """Помилка отримання погоди, зрозуміла веб-рівню."""
+    pass
 
 
 def find_city(name: str):
     """Знайти координати міста за його назвою.
 
-    Що саме повертати — вирішіть самі: пару чисел, словник, окремий тип.
-    Врахуйте випадок, коли міста з такою назвою немає.
+    Повертає словник із ключами `latitude`, `longitude` та `name`.
+    Викидає WeatherError, якщо місто не знайдено, сталася помилка мережі або статус-код != 200.
     """
-    raise NotImplementedError("find_city ще не реалізовано")
+    if not name or not name.strip():
+        raise WeatherError("Назва міста не може бути порожньою.")
+
+    try:
+        response = requests.get(
+            GEOCODING_URL,
+            params={"name": name.strip(), "count": 1},
+            timeout=5.0
+        )
+    except requests.exceptions.Timeout:
+        raise WeatherError("Перевищено час очікування відповіді від сервісу геокодування.")
+    except requests.exceptions.ConnectionError:
+        raise WeatherError("Помилка підключення до мережі інтернет.")
+    except requests.exceptions.RequestException as e:
+        raise WeatherError(f"Мережева помилка: {e}")
+
+
+    if response.status_code != 200:
+        if 400 <= response.status_code < 500:
+            raise WeatherError(f"Помилка клієнта при запиті геокодування (статус {response.status_code}).")
+        elif response.status_code >= 500:
+            raise WeatherError(f"Збій на сервері геокодування (статус {response.status_code}).")
+        else:
+            raise WeatherError(f"Неочікуваний статус відповіді: {response.status_code}")
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise WeatherError("Отримано невалідний формат JSON від сервісу геокодування.")
+
+
+    results = data.get("results")
+    if not results or not isinstance(results, list) or len(results) == 0:
+        raise WeatherError(f"Місто '{name}' не знайдено.")
+
+    city_info = results[0]
+    return {
+        "name": city_info.get("name"),
+        "latitude": city_info.get("latitude"),
+        "longitude": city_info.get("longitude")
+    }
 
 
 def get_current_weather(city: str):
     """Повернути поточну погоду в місті: температуру й швидкість вітру.
 
-    Це функція, яку викликає веб-рівень. Вона поєднує геокодування і запит
-    прогнозу та віддає результат у зручному для застосунку вигляді.
+    Викликає спочатку `find_city`, а потім робить запит до погодного API.
     """
-    raise NotImplementedError("get_current_weather ще не реалізовано")
+
+    location = find_city(city)
+    lat = location["latitude"]
+    lon = location["longitude"]
+    city_name = location["name"]
+
+
+    try:
+        response = requests.get(
+            FORECAST_URL,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,wind_speed_10m"
+            },
+            timeout=5.0
+        )
+    except requests.exceptions.Timeout:
+        raise WeatherError("Перевищено час очікування відповіді від погодного сервісу.")
+    except requests.exceptions.ConnectionError:
+        raise WeatherError("Помилка підключення до погодного сервісу.")
+    except requests.exceptions.RequestException as e:
+        raise WeatherError(f"Мережева помилка погодного API: {e}")
+
+ 
+    if response.status_code != 200:
+        if 400 <= response.status_code < 500:
+            raise WeatherError(f"Помилка клієнта погодного API (статус {response.status_code}).")
+        elif response.status_code >= 500:
+            raise WeatherError(f"Збій на сервері погодного API (статус {response.status_code}).")
+        else:
+            raise WeatherError(f"Неочікуваний статус погодного API: {response.status_code}")
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise WeatherError("Отримано невалідний формат JSON від погодного сервісу.")
+
+
+    current = data.get("current")
+    if not isinstance(current, dict):
+        raise WeatherError("У відповіді погодного сервісу відсутні дані поточних показників ('current').")
+
+    temperature = current.get("temperature_2m")
+    wind_speed = current.get("wind_speed_10m")
+
+    if temperature is None or wind_speed is None:
+        raise WeatherError("У відповіді погодного сервісу немає значень температури або вітру.")
+
+    return {
+        "city": city_name,
+        "temperature": temperature,
+        "wind_speed": wind_speed
+    }
