@@ -1,49 +1,31 @@
-"""Модуль inference: єдине місце застосунку, яке знає про модель.
+import time
+from ultralytics import YOLO
 
-Тут живуть ваги, поріг упевненості й формат «сирого» результату моделі.
-Веб-рівень (`app/main.py`) отримує звідси готовий структурований список
-знайдених обʼєктів і нічого не знає ані про `ultralytics`, ані про те,
-у якому вигляді модель віддає рамки.
+model = YOLO("yolov8n.pt")
 
-Функції нижче — заготовки. Реалізуйте їх самі, ухваливши по дорозі
-рішення з розділу 2 практичної роботи:
-
-* де саме завантажувати ваги, щоб це сталося **один раз**, а не на кожен запит;
-* яким узяти поріг упевненості й чи дозволяти змінювати його ззовні;
-* у якому вигляді віддавати результат: які поля, які одиниці координат;
-* як виміряти час inference і що саме до нього зараховувати;
-* як повестися, коли надійшов не той файл — не зображення або порожній.
-
-Довідка про модель: https://docs.ultralytics.com/
-"""
-
-WEIGHTS = "yolov8n.pt"
-DEFAULT_CONFIDENCE = 0.25
-
-
-class DetectionError(Exception):
-    """Помилка детекції, зрозуміла веб-рівню.
-
-    Заготовка. Вирішіть, чи достатньо одного типу помилки, чи їх варто
-    розрізняти — некоректний файл, збій моделі, — і що з цього має
-    побачити користувач.
-    """
-
-
-def load_model():
-    """Повернути готову до роботи модель.
-
-    Завантаження ваг коштує дорого. Подумайте, як зробити так, щоб воно
-    відбулося один раз за час життя застосунку.
-    """
-    raise NotImplementedError("load_model ще не реалізовано")
-
-
-def detect(image_bytes: bytes, confidence: float = DEFAULT_CONFIDENCE):
-    """Знайти обʼєкти на зображенні.
-
-    Приймає байти завантаженого файлу, повертає структурований результат:
-    для кожного знайденого обʼєкта — клас, рамку й упевненість, а також
-    їхню кількість і час виконання. Точний склад полів — ваше рішення.
-    """
-    raise NotImplementedError("detect ще не реалізовано")
+def detect_objects(image_path: str, conf_threshold: float = 0.25):
+    start_time = time.time()
+    
+    results = model(image_path, conf=conf_threshold)
+    
+    inference_time = time.time() - start_time
+    detected_objects = []
+    
+    for r in results:
+        for box in r.boxes:
+            cls_id = int(box.cls[0])
+            cls_name = model.names[cls_id]
+            conf = float(box.conf[0])
+            xyxy = box.xyxy[0].tolist()
+            
+            detected_objects.append({
+                "class": cls_name,
+                "confidence": round(conf, 2),
+                "box": [round(coord, 2) for coord in xyxy]
+            })
+            
+    return {
+        "objects": detected_objects,
+        "count": len(detected_objects),
+        "inference_time_sec": round(inference_time, 3)
+    }

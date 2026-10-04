@@ -1,20 +1,19 @@
 {
-  "_комент": "Зразок формату. Скопіюйте у expected.json і замініть своїми зображеннями.",
   "images": [
     {
-      "file": "images/street-01.jpg",
-      "expected": ["person", "person", "car", "traffic light"],
-      "note": "двоє пішоходів на переході, один автомобіль, світлофор угорі кадру"
+      "file": "eval/the_beatles.jpg",
+      "expected": ["person", "person", "person", "person"],
+      "note": "Учасники гурту 5x4"
     },
     {
-      "file": "images/kitchen-01.jpg",
-      "expected": ["bottle", "cup", "bowl"],
-      "note": "чашка частково перекрита пляшкою — цікавий випадок"
+      "file": "eval/like_a_stone.jpg",
+      "expected": ["person", "fire", "mountains"],
+      "note": "Вогонь який не горить"
     },
     {
-      "file": "images/empty-wall.jpg",
-      "expected": [],
-      "note": "жодного обʼєкта; перевіряє хибні спрацювання"
+      "file": "eval/wifiskeleton.jpg",
+      "expected": ["cat"],
+      "note": "Доволі дивний котик"
     }
   ]
 }

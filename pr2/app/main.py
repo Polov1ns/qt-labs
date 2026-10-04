@@ -1,45 +1,27 @@
-"""Веб-рівень застосунку: сторінка із завантаженням файлу і JSON-ендпоінт.
+import shutil
+import os
+from fastapi import FastAPI, UploadFile, File, Request
+from fastapi.responses import JSONResponse
+from fastapi.templating import Jinja2Templates
+from app.detector import detect_objects
 
-Цей файл не має знати про `ultralytics`, ваги моделі й формат її «сирого»
-виводу — усе це лишається в `app/detector.py`. Тут вирішується інше: що
-застосунок віддає клієнтові та з яким HTTP-статусом.
+app = FastAPI()
+templates = Jinja2Templates(directory="app/templates")
 
-Запуск із папки pr2:
-
-    uvicorn app.main:app --reload
-
-Далі відкрийте http://127.0.0.1:8000
-"""
-
-from pathlib import Path
-
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse
-
-from . import detector
-
-app = FastAPI(title="Детекція обʼєктів — ПР2")
-
-INDEX_PAGE = Path(__file__).parent / "templates" / "index.html"
-
-
-@app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    """Віддати сторінку із завантаженням зображення."""
-    return INDEX_PAGE.read_text(encoding="utf-8")
-
+@app.get("/", response_class=JSONResponse)
+def read_root(request: Request):
+    return templates.TemplateResponse(request, "index.html", {})
 
 @app.post("/api/detect")
-async def api_detect(image: UploadFile = File(...)):
-    """Повернути знайдені на зображенні обʼєкти у форматі JSON.
-
-    Зараз виняток із модуля inference не обробляється — застосунок просто
-    впаде з помилкою 500. Спроєктуйте обробку самі: які збої можливі
-    (не зображення, порожній файл, помилка моделі), який HTTP-статус
-    відповідає кожному з них і що в такому разі отримає клієнт.
-
-    Поріг упевненості поки що жорстко зашитий у модулі. Вирішіть, чи має
-    користувач змогу його змінювати, і якщо так — як передати це сюди.
-    """
-    content = await image.read()
-    return detector.detect(content)
+async def detect_api(image: UploadFile = File(...)):
+    temp_file_path = f"temp_{image.filename}"
+    with open(temp_file_path, "wb") as buffer:
+        shutil.copyfileobj(image.file, buffer)
+        
+    try:
+        result = detect_objects(temp_file_path, conf_threshold=0.25)
+    finally:
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+            
+    return result
